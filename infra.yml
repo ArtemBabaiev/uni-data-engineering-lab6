@@ -61,3 +61,20 @@ services:
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-2:29092,EXTERNAL://localhost:9092
       KAFKA_DEFAULT_REPLICATION_FACTOR: 2
       KAFKA_NUM_PARTITIONS: 2
+
+  minio:
+    image: docker.io/bitnami/minio:2025
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - ./minio_data:/data
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=pass_admin
+      - MINIO_DEFAULT_BUCKETS=default
+
+volumes:
+  minio_data:
+    driver: local

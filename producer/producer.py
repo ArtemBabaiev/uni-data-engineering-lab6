@@ -2,13 +2,13 @@ import json
 import os
 import time
 import csv
+from datetime import datetime
 
 from kafka import KafkaProducer
 
 TOPICS = os.environ.get('TOPICS', 'Topic1,Topic2').split(',')
 BOOTSTRAP_SERVERS = os.environ.get('BOOTSTRAP_SERVERS', 'localhost:9091,localhost:9092').split(',')
 CSV_PATH = os.environ.get('CSV_PATH', './data/Divvy_Trips_2019_Q4.csv')
-ENTRIES_LIMIT = int(os.environ.get('ENTRIES_LIMIT', '100'))
 
 print("Starting producer...")
 print(f"TOPICS: {TOPICS}")
@@ -25,6 +25,8 @@ def get_producer():
         print(e)
         return None
 
+def parse_datetime(row):
+    return datetime.strptime(row['start_time'], "%Y-%m-%d %H:%M:%S")
 
 producer=None
 
@@ -36,11 +38,10 @@ while producer is None:
 print("Sending messages...")
 
 with open(CSV_PATH, newline='', encoding='utf-8') as csvfile:
-    reader = csv.DictReader(csvfile)
+    reader = list(csv.DictReader(csvfile))
+    reader.sort(key=parse_datetime)
     for idx, row in enumerate(reader):
-        time.sleep(2)
-        if idx >= ENTRIES_LIMIT:
-            break
+        #time.sleep(0.5)
         print(f"Sending message {idx}...")
         for topic in TOPICS:
             producer.send(topic, row)

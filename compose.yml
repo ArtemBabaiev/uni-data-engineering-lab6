@@ -1,0 +1,42 @@
+include:
+  - infra.yml
+
+services:
+  producer:
+    container_name: producer
+    build:
+      context: producer
+      dockerfile: ./Dockerfile
+    environment:
+      BOOTSTRAP_SERVERS: broker-1:29091,broker-2:29092
+      TOPICS: Topic1,Topic2
+    depends_on:
+      - zookeeper
+      - broker-1
+      - broker-2
+
+  consumer-1:
+    container_name: consumer-1
+    build:
+      context: consumer
+      dockerfile: ./Dockerfile
+    environment:
+      BOOTSTRAP_SERVERS: broker-1:29091,broker-2:29092
+      TOPIC: Topic1
+    depends_on:
+      - zookeeper
+      - broker-1
+      - broker-2
+
+  consumer-2:
+    container_name: consumer-2
+    build:
+      context: consumer
+      dockerfile: ./Dockerfile
+    environment:
+      BOOTSTRAP_SERVERS: broker-1:29091,broker-2:29092
+      TOPIC: Topic2
+    depends_on:
+      - zookeeper
+      - broker-1
+      - broker-2

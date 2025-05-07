@@ -2,7 +2,8 @@ import json
 import os
 import time
 from minio import Minio, S3Error
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
 
 import csv
 
@@ -22,6 +23,23 @@ print("Starting consumer...")
 print(f"TOPIC: {TOPIC}")
 print(f"BOOTSTRAP_SERVERS: {BOOTSTRAP_SERVERS}")
 
+consumer = None
+
+minio_client = Minio(
+    MINIO_ENDPOINT,
+    access_key=MINIO_ACCESS_KEY,
+    secret_key=MINIO_SECRET_KEY,
+    secure=False
+)
+
+current_month_year = None
+csv_file = None
+csv_writer = None
+
+last_message_time = datetime.now()
+idle_timeout = timedelta(minutes=2)
+
+
 def get_consumer():
     try:
         kafka_consumer = KafkaConsumer(
@@ -36,10 +54,13 @@ def get_consumer():
 
 def upload_to_minio(csv_file_path):
     print(f"Uploading {csv_file_path}...")
+    timestamp = int(time.time())  # UNIX timestamp as integer
+    file_name = os.path.splitext(os.path.basename(csv_file_path))[0]
+    new_object_name = f"{file_name}_{timestamp}.csv"
     minio_client.fput_object(
-        BUCKET_NAME, os.path.basename(csv_file_path), csv_file_path,
+        BUCKET_NAME, new_object_name, csv_file_path,
     )
-    print(f"Uploaded {csv_file_path} to MinIO.")
+    print(f"Uploaded {csv_file_path} as {new_object_name} to MinIO.")
 
 def open_file(month_year, init_data):
     print(f"Opening {month_year}...")
@@ -51,19 +72,30 @@ def open_file(month_year, init_data):
     month_year_file.flush()
     return month_year_file, dict_writer
 
-consumer = None
+def monitor_idle_time():
+    global last_message_time, csv_file, current_month_year, csv_writer
+    print("Monitoring idle time...")
+    while True:
+        time.sleep(30)  # Check every 30 seconds
+        print("Checking idle time...")
+        if current_month_year and (datetime.now() - last_message_time > idle_timeout):
+            print("Idle timeout exceeded. Uploading file...")
+            csv_file_path = os.path.join(WORK_DIR, f"{current_month_year}.csv")
+            try:
+                if csv_file:
+                    csv_file.close()
+                    csv_file = None
+                upload_to_minio(csv_file_path)
+                os.remove(csv_file_path)
+                current_month_year = None
+                csv_writer = None
+            except Exception as e:
+                print(f"Error during idle upload: {e}")
 
 while consumer is None:
     print('brokers are not available yet')
     time.sleep(5)
     consumer = get_consumer()
-
-minio_client = Minio(
-    MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY,
-    secure=False
-)
 
 if not minio_client.bucket_exists(BUCKET_NAME):
     minio_client.make_bucket(BUCKET_NAME)
@@ -72,17 +104,16 @@ os.makedirs(WORK_DIR, exist_ok=True)
 
 print("Consumer started. Listening for messages...")
 
-current_month_year = None
-csv_file = None
-csv_writer = None
+monitor_thread = threading.Thread(target=monitor_idle_time, daemon=True)
+monitor_thread.start()
 
 try:
     for message in consumer:
+        last_message_time = datetime.now()
         data = message.value
         dt = datetime.strptime(data['start_time'], "%Y-%m-%d %H:%M:%S")
         new_month_year = f"{dt.strftime('%B').lower()}_{dt.year}"
         if current_month_year is None:
-            print(f'New month year: {new_month_year}')
             current_month_year = new_month_year
             csv_file, csv_writer = open_file(new_month_year, data)
         elif current_month_year == new_month_year:

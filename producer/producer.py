@@ -41,7 +41,7 @@ with open(CSV_PATH, newline='', encoding='utf-8') as csvfile:
     reader = list(csv.DictReader(csvfile))
     reader.sort(key=parse_datetime)
     for idx, row in enumerate(reader):
-        #time.sleep(0.5)
+        #time.sleep(0.1)
         print(f"Sending message {idx}...")
         for topic in TOPICS:
             producer.send(topic, row)
